@@ -15,6 +15,8 @@ def build_lambda():
         shutil.make_archive("./build/lambda", 'zip', "./build/lambda")
         os.system("rm -rf ./build/lambda")
 
+        print("Lambda function zip file built!")
+
     except Exception as e:
         print(f"Error building lambda. Exception: {e}.")
 
@@ -23,6 +25,9 @@ def upload_lambada():
     try:
         s3 = session.resource('s3')
         s3.Bucket('lambda-source').upload_file('./build/lambda.zip', 'lambda.zip')
+
+        print("Lambda function zip file uploaded to S3!")
+
     except Exception as e:
         print(f"Error uploading lambda. Exception: {e}.")
 
@@ -43,6 +48,8 @@ def create_stack():
             Capabilities=['CAPABILITY_NAMED_IAM'],
             OnFailure='DO_NOTHING',
         )
+
+        print("Creating CloudFormation stack. Check the service console for more information.")
 
     except Exception as e:
         print(f"Error creating stack. Exception: {e}.")
@@ -65,6 +72,8 @@ def update_stack():
             OnFailure='DO_NOTHING',
         )
 
+        print("Updating CloudFormation stack. Check the service console for more information.")
+
     except Exception as e:
         print(f"Error updating stack. Exception: {e}.")
 
@@ -74,17 +83,19 @@ def delete_stack():
         cf = session.client("cloudformation")
         cf.delete_stack(StackName='data-processing')
 
+        print("Deleting CloudFormation stack. Check the service console for more information.")
+
     except Exception as e:
         print(f"Error deleting stack. Exception: {e}.")
 
 
 if __name__ == '__main__':
 
-    if sys.argv[2] == 'create':
+    if sys.argv[1] == 'create':
         create_stack()
-    elif sys.argv[2] == 'update':
+    elif sys.argv[1] == 'update':
         update_stack()
-    elif sys.argv[2] == 'delete':
+    elif sys.argv[1] == 'delete':
         delete_stack()
     else:
         print("Wrong command!")
