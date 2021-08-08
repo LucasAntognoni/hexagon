@@ -27,7 +27,7 @@ def get_file(file):
 
     try:
         obj = s3.get_object(Bucket=os.environ['DATA_BUCKET'], Key=file)
-        contents = obj['Body'].read().decode('utf-8').splitlines(True)
+        contents = obj['Body'].read().decode('iso-8859-15').splitlines(True)
         return contents
 
     except Exception as e:
