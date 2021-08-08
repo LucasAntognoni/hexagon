@@ -1,39 +1,68 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
+Parameters:
+  BucketName:
+    Type: String
+    Default: "data-storage"
+
 Resources:
-
-  DataBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "data-storage-${AWS::AccountId}"
-      AccessControl: Private
-      NotificationConfiguration:
-        LambdaConfigurations:
-          - Event: s3:ObjectCreated:Put
-            Function: !GetAtt Lambda.Arn
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: "UNPROCESSED"
-
-  LambdaSourceBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "lambda-source-${AWS::AccountId}"
-      AccessControl: Private
 
   DataTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: "DataTable"
       BillingMode: "PAY_PER_REQUEST"
       AttributeDefinitions:
-        - AttributeName: "Timestamp"
+        - AttributeName: "TIMESTAMP"
+          AttributeType: N
+        - AttributeName: "ID"
           AttributeType: N
       KeySchema:
-        - AttributeName: "Timestamp"
+        - AttributeName: "TIMESTAMP"
           KeyType: HASH
+        - AttributeName: "ID"
+          KeyType: RANGE
+
+  DataBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: InvokeLambdaPermission
+    Properties:
+      BucketName: !Ref BucketName
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Function: !GetAtt LambdaFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: ".csv"
+
+  InvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !Ref LambdaFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref "AWS::AccountId"
+      SourceArn: !Sub "arn:aws:s3:::${BucketName}"
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "process_csv"
+      Handler: "lambda_function.lambda_handler"
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        S3Bucket: !Sub "lambda-source-${AWS::AccountId}"
+        S3Key: "lambda.zip"
+      Runtime: "python3.8"
+      MemorySize: 512
+      Timeout: 150
+      ReservedConcurrentExecutions: 1
+      Environment:
+        Variables:
+          DATA_TABLE: !Ref DataTable
+          DATA_BUCKET: !Ref BucketName
 
   LambdaRole:
     Type: AWS::IAM::Role
@@ -59,6 +88,7 @@ Resources:
           - Effect: Allow
             Action:
               - dynamodb:PutItem
+              - dynamodb:BatchWriteItem
             Resource: !GetAtt DataTable.Arn
           - Effect: Allow
             Action:
@@ -83,17 +113,3 @@ Resources:
               - logs:PutLogEvents
             Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
       PolicyName: "lambda_role_policy"
-
-  Lambda:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: "lambda"
-      Handler: "lambda_function.lambda_handler"
-      Role: !GetAtt LambdaRole.Arn
-      Code:
-        S3Bucket: !Ref LambdaSourceBucket
-        S3Key: "lambda.zip"
-      Runtime: "python3.8"
-      MemorySize: 512
-      Timeout: 150
-      ReservedConcurrentExecutions: 1
