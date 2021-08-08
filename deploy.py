@@ -4,35 +4,103 @@ import shutil
 
 import boto3
 
-session = boto3.session.Session(profile_name=os.environ['AWS_PROFILE'])
+session = boto3.session.Session(
+    region_name=os.environ['AWS_REGION'],
+    aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+    aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
+)
 
 
 def build_lambda():
+    """
+        Creates Lambda deployment package
+    """
+
     try:
-        os.system("mkdir -p build")
-        os.system("cp -r /build/lambda build")
+        os.system("mkdir -p ./build")
+        os.system("cp -r ./lambda ./build")
         os.system("pip3 install -r ./build/lambda/requirements.txt -t ./build/lambda")
         shutil.make_archive("./build/lambda", 'zip', "./build/lambda")
         os.system("rm -rf ./build/lambda")
 
-        print("Lambda function zip file built!")
+        print("Lambda deployment package built!")
 
     except Exception as e:
-        print(f"Error building lambda. Exception: {e}.")
+        print(f"Error building deployment package. Exception: {e}.")
 
 
-def upload_lambada():
+def upload_lambda():
+    """
+        Uploads Lambda deployment package to S3
+    """
+
+    s3 = session.resource('s3')
+
     try:
-        s3 = session.resource('s3')
-        s3.Bucket('lambda-source').upload_file('./build/lambda.zip', 'lambda.zip')
-
-        print("Lambda function zip file uploaded to S3!")
+        s3.Bucket(f"lambda-source-{os.environ['AWS_ACCOUNT']}").upload_file('./build/lambda.zip', 'lambda.zip')
+        print("Lambda deployment package uploaded to S3!")
 
     except Exception as e:
-        print(f"Error uploading lambda. Exception: {e}.")
+        print(f"Error uploading deployment package. Exception: {e}.")
+
+
+def update_lambda():
+    """
+        Publishes a new Lambda version
+    """
+
+    client = session.client('lambda')
+
+    try:
+        client.update_function_code(
+            FunctionName='process_csv',
+            S3Key='lambda.csv',
+            S3Bucket=f"lambda-source-{os.environ['AWS_ACCOUNT']}",
+            Publish=True
+        )
+        print("Lambda function published!")
+
+    except Exception as e:
+        print(f"Error publishing lambda. Exception: {e}.")
+
+
+def create_bucket():
+    """
+        Creates S3 Bucket for Lambda source code
+    """
+
+    s3 = session.resource('s3')
+
+    try:
+        s3.create_bucket(Bucket=f"lambda-source-{os.environ['AWS_ACCOUNT']}", ACL='private')
+        print('Created S3 bucket!')
+
+    except Exception as e:
+        print(f"Error creating S3 bucket. Exception: {e}.")
+
+
+def delete_bucket():
+    """
+        Deletes S3 Bucket for Lambda source code
+    """
+
+    s3 = session.resource('s3')
+
+    try:
+        bucket = s3.Bucket(f"lambda-source-{os.environ['AWS_ACCOUNT']}")
+        bucket.objects.all().delete()
+        bucket.delete()
+        print('Deleted S3 bucket!')
+
+    except Exception as e:
+        print(f"Error creating S3 bucket. Exception: {e}.")
 
 
 def create_stack():
+    """
+        Creates CloudFormation Stack
+    """
+
     try:
         cf = session.client("cloudformation")
 
@@ -47,6 +115,9 @@ def create_stack():
             TimeoutInMinutes=10,
             Capabilities=['CAPABILITY_NAMED_IAM'],
             OnFailure='DO_NOTHING',
+            Parameters=[
+                {'ParameterKey': 'BucketName', 'ParameterValue': f"data-storage-{os.environ['AWS_ACCOUNT']}"}
+            ]
         )
 
         print("Creating CloudFormation stack. Check the service console for more information.")
@@ -56,6 +127,10 @@ def create_stack():
 
 
 def update_stack():
+    """
+        Updates CloudFormation Stack
+    """
+
     try:
         cf = session.client("cloudformation")
 
@@ -67,9 +142,10 @@ def update_stack():
         cf.update_stack(
             StackName='data-processing',
             TemplateBody=template,
-            TimeoutInMinutes=10,
             Capabilities=['CAPABILITY_NAMED_IAM'],
-            OnFailure='DO_NOTHING',
+            Parameters=[
+                {'ParameterKey': 'BucketName', 'ParameterValue': f"data-storage-{os.environ['AWS_ACCOUNT']}"}
+            ]
         )
 
         print("Updating CloudFormation stack. Check the service console for more information.")
@@ -79,6 +155,10 @@ def update_stack():
 
 
 def delete_stack():
+    """
+        Deletes CloudFormation Stack
+    """
+
     try:
         cf = session.client("cloudformation")
         cf.delete_stack(StackName='data-processing')
@@ -91,11 +171,27 @@ def delete_stack():
 
 if __name__ == '__main__':
 
-    if sys.argv[1] == 'create':
+    if len(sys.argv) < 3 or sys.argv[1] == 'help':
+        print("Available commands:\n\n\t>create: Deploy stack"
+              "\n\n\t>update: Update stack and lambda"
+              "\n\n\t>delete: Delete stack, lambda and S3 bucket"
+              "\n\n\t>lambda: Update lambda")
+    elif sys.argv[1] == 'create':
+        create_bucket()
+        build_lambda()
+        upload_lambda()
         create_stack()
     elif sys.argv[1] == 'update':
+        build_lambda()
+        upload_lambda()
+        update_lambda()
         update_stack()
     elif sys.argv[1] == 'delete':
+        delete_bucket()
         delete_stack()
+    elif sys.argv[1] == 'lambda':
+        build_lambda()
+        upload_lambda()
+        update_lambda()
     else:
-        print("Wrong command!")
+        print("Wrong command! Type 'help' to see available options.")
