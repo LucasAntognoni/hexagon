@@ -35,6 +35,29 @@ def get_file(file):
         return None
 
 
+def move_file(file):
+    """
+        Mark file as 'processed'
+
+        :param file: S3 object key
+        :type file: str
+
+        :return: True if file was marked correctly, False o/w
+        :rtype: bool
+    """
+
+    s3 = session.resource('s3')
+
+    try:
+        s3.Object(os.environ['DATA_BUCKET'], f"{file}.PROCESSED")\
+            .copy_from(CopySource=f"{os.environ['DATA_BUCKET']}/{file}")
+        s3.Object(os.environ['DATA_BUCKET'], file).delete()
+        return True
+    except Exception as e:
+        logger.error(f"Error moving file {file}. Exception: {e}.")
+        return False
+
+
 def process_file(file):
     """
         Process CSV file
@@ -66,7 +89,9 @@ def process_file(file):
                     row[3] = int(datetime.strptime(row[3], "%d/%m/%Y").timestamp())
                     item = dict(zip(header, row))
                     batch.put_item(Item=item)
-            return True
+
+            return move_file(file)
+
         else:
             return False
 
