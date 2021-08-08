@@ -93,7 +93,23 @@ def delete_bucket():
         print('Deleted S3 bucket!')
 
     except Exception as e:
-        print(f"Error creating S3 bucket. Exception: {e}.")
+        print(f"Error deleting S3 bucket. Exception: {e}.")
+
+
+def empty_bucket():
+    """
+        Deletes S3 Bucket objects
+    """
+
+    s3 = session.resource('s3')
+
+    try:
+        bucket = s3.Bucket(f"data-storage-{os.environ['AWS_ACCOUNT']}")
+        bucket.objects.all().delete()
+        print('Deleted S3 objects!')
+
+    except Exception as e:
+        print(f"Error deleting S3 objects. Exception: {e}.")
 
 
 def create_stack():
@@ -169,9 +185,26 @@ def delete_stack():
         print(f"Error deleting stack. Exception: {e}.")
 
 
+def upload_file(file):
+    """
+        Upload file to S3 for processing
+    """
+
+    try:
+        if file in os.listdir('./data'):
+            s3 = session.resource('s3')
+            s3.Bucket(f"data-storage-{os.environ['AWS_ACCOUNT']}").upload_file(f"./data/{file}", file)
+            print(f"Uploaded {file} with success!")
+        else:
+            print(f"File does not exist!")
+
+    except Exception as e:
+        print(f"Error uploading stack. Exception: {e}.")
+
+
 if __name__ == '__main__':
 
-    if len(sys.argv) < 3 or sys.argv[1] == 'help':
+    if len(sys.argv) < 2 or sys.argv[1] == 'help':
         print("Available commands:\n\n\t>create: Deploy stack"
               "\n\n\t>update: Update stack and lambda"
               "\n\n\t>delete: Delete stack, lambda and S3 bucket"
@@ -188,10 +221,16 @@ if __name__ == '__main__':
         update_stack()
     elif sys.argv[1] == 'delete':
         delete_bucket()
+        empty_bucket()
         delete_stack()
     elif sys.argv[1] == 'lambda':
         build_lambda()
         upload_lambda()
         update_lambda()
+    elif sys.argv[1] == 'upload':
+        if len(sys.argv) < 3:
+            print("Missing parameter: file!")
+        else:
+            upload_file(sys.argv[2])
     else:
         print("Wrong command! Type 'help' to see available options.")
